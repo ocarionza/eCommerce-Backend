@@ -7,22 +7,27 @@ const orderRouter = express.Router();
 
 
 
+// Crear orden en efectivo
 orderRouter
   .route("/:id")
   .post(
     protectedRoutes,
-    allowedTo("user"),
+    allowedTo("user", "admin"),  // Permitir user y admin
     order.createCashOrder
   )
-  orderRouter
+
+// Obtener mis órdenes (usuario)
+orderRouter
   .route("/")
   .get(
     protectedRoutes,
-    allowedTo("user"),
+    allowedTo("user", "admin"),  // Permitir user y admin
     order.getSpecificOrder
   )
 
-  orderRouter.post('/checkOut/:id' ,protectedRoutes, allowedTo("user"),order.createCheckOutSession)
+// Checkout con Stripe
+orderRouter.post('/checkOut/:id', protectedRoutes, allowedTo("user", "admin"), order.createCheckOutSession)
 
-  orderRouter.get('/all',order.getAllOrders)
+// Ver todas las ventas (solo admin)
+orderRouter.get('/admin/sales', protectedRoutes, allowedTo("admin"), order.getAllOrders)
 export default orderRouter;

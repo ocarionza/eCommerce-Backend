@@ -10,18 +10,18 @@ cartRouter
   .route("/")
   .post(
     protectedRoutes,
-    allowedTo("user"),
+    allowedTo("user", "admin"),  // Permitir user y admin
     cart.addProductToCart
   ).get(
     protectedRoutes,
-    allowedTo("user"),
+    allowedTo("user", "admin"),  // Permitir user y admin
     cart.getLoggedUserCart
   )
   cartRouter
   .route("/apply-coupon")
   .post(
     protectedRoutes,
-    allowedTo("user"),
+    allowedTo("user", "admin"),  // Permitir user y admin
     cart.applyCoupon
   )
 
@@ -29,12 +29,12 @@ cartRouter
   .route("/:id")
   .delete(
     protectedRoutes,
-    allowedTo("user"),
+    allowedTo("user", "admin"),  // Permitir user y admin
     cart.removeProductFromCart
   )
   .put(
     protectedRoutes,
-    allowedTo("user"),
+    allowedTo("user", "admin"),  // Permitir user y admin
     cart.updateProductQuantity
   );
 

@@ -12,7 +12,6 @@ import { ApiFeatures } from "../../utils/ApiFeatures.js";
  */
 function extractImagesFromRequest(req) {
   const out = {};
-
   // imgCover
   if (req?.files?.imgCover?.[0]) {
     // Multer subió portada
@@ -21,7 +20,6 @@ function extractImagesFromRequest(req) {
     // Body trae URL/string
     out.imgCover = req.body.imgCover.trim();
   }
-
   // images (galería)
   if (Array.isArray(req?.files?.images) && req.files.images.length > 0) {
     out.images = req.files.images.map((f) => f.filename);
@@ -37,14 +35,31 @@ function extractImagesFromRequest(req) {
       out.images = raw.map((s) => s.trim()).filter(Boolean);
     }
   }
-
   return out;
 }
+
+// Función para verificar ownership del producto
+const checkProductOwnership = async (productId, userId, userRole) => {
+  if (userRole === "admin") return true; // Admin puede todo
+  
+  const product = await productModel.findById(productId);
+  if (!product) return false;
+  
+  return product.seller && product.seller.toString() === userId.toString();
+};
 
 const addProduct = catchAsyncError(async (req, res, next) => {
   // slug
   if (req.body.title) {
     req.body.slug = slugify(req.body.title, { lower: true, strict: true });
+  }
+
+  // Asignar vendedor si es un seller
+  if (req.user.role === "seller") {
+    req.body.seller = req.user._id;
+    req.body.createdBy = "seller";
+  } else {
+    req.body.createdBy = "admin";
   }
 
   // Imágenes: soporta Multer y/o URLs en body
@@ -74,13 +89,19 @@ const getAllProducts = catchAsyncError(async (req, res, next) => {
 
 const getSpecificProduct = catchAsyncError(async (req, res, next) => {
   const { id } = req.params;
-  const product = await productModel.findById(id); // ← fix: antes era findByIdAndUpdate
+  const product = await productModel.findById(id).populate('seller', 'name email');
   if (!product) return next(new AppError("Product was not found", 404));
   res.status(200).json({ message: "success", getSpecificProduct: product });
 });
 
 const updateProduct = catchAsyncError(async (req, res, next) => {
   const { id } = req.params;
+
+  // Verificar si el usuario puede actualizar este producto
+  const canUpdate = await checkProductOwnership(id, req.user._id, req.user.role);
+  if (!canUpdate) {
+    return next(new AppError("You are not authorized to update this product", 403));
+  }
 
   if (req.body.title) {
     req.body.slug = slugify(req.body.title, { lower: true, strict: true });
@@ -100,7 +121,44 @@ const updateProduct = catchAsyncError(async (req, res, next) => {
   res.status(200).json({ message: "success", updateProduct: updated });
 });
 
-const deleteProduct = deleteOne(productModel, "Product");
+// Controlador personalizado para delete
+const deleteProduct = catchAsyncError(async (req, res, next) => {
+  const { id } = req.params;
+
+  // Verificar si el usuario puede eliminar este producto
+  const canDelete = await checkProductOwnership(id, req.user._id, req.user.role);
+  if (!canDelete) {
+    return next(new AppError("You are not authorized to delete this product", 403));
+  }
+
+  const deleted = await productModel.findByIdAndDelete(id);
+  if (!deleted) return next(new AppError("Product was not found", 404));
+
+  res.status(200).json({ message: "Product deleted successfully" });
+});
+
+// Nuevo controlador para que vendedores vean sus productos
+const getSellerProducts = catchAsyncError(async (req, res, next) => {
+  const apiFeature = new ApiFeatures(
+    productModel.find({ seller: req.user._id }), 
+    req.query
+  )
+    .pagination()
+    .fields()
+    .filteration()
+    .search()
+    .sort();
+
+  const PAGE_NUMBER = apiFeature.queryString.page * 1 || 1;
+  const products = await apiFeature.mongooseQuery;
+
+  res.status(200).json({ 
+    page: PAGE_NUMBER, 
+    message: "success", 
+    products,
+    total: products.length 
+  });
+});
 
 export {
   addProduct,
@@ -108,4 +166,5 @@ export {
   getSpecificProduct,
   updateProduct,
   deleteProduct,
+  getSellerProducts,
 };

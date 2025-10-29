@@ -6,4 +6,11 @@ const authRouter = express.Router();
 authRouter.post("/signup", auth.signUp);
 authRouter.post("/signin", auth.signIn);
 
+authRouter.patch(
+    "/assign-seller/:userId",
+    auth.protectedRoutes,
+    auth.allowedTo("admin"),
+    auth.assignSellerRole
+  );
+
 export default authRouter;

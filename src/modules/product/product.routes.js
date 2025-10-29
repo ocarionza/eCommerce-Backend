@@ -17,11 +17,19 @@ let arrFields = [
   { name: "images", maxCount: 20 },
 ];
 
+// Ruta para que vendedores vean solo sus productos
+productRouter.get(
+  "/my-products",
+  protectedRoutes,
+  allowedTo("seller"),
+  product.getSellerProducts
+);
+
 productRouter
   .route("/")
   .post(
     protectedRoutes,
-    allowedTo("admin", "user"),
+    allowedTo("admin", "seller"), // Permitir a vendedores crear productos
     uploadMultipleFiles(arrFields, "products"),
     validate(addProductValidation),
     product.addProduct
@@ -30,18 +38,21 @@ productRouter
 
 productRouter
   .route("/:id")
+  .get(
+    validate(getSpecificProductValidation),
+    product.getSpecificProduct
+  )
   .put(
     protectedRoutes,
-    allowedTo("admin"),
+    allowedTo("admin", "seller"), // Permitir a vendedores actualizar
     validate(updateProductValidation),
     product.updateProduct
   )
   .delete(
     protectedRoutes,
-    allowedTo("admin"),
+    allowedTo("admin", "seller"), // Permitir a vendedores eliminar
     validate(deleteProductValidation),
     product.deleteProduct
-  )
-  .get(validate(getSpecificProductValidation), product.getSpecificProduct);
+  );
 
 export default productRouter;

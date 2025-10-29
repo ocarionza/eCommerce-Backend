@@ -14,6 +14,8 @@ const addProductValidation = Joi.object({
   brand: Joi.string().hex().length(24).required(),
   ratingAvg: Joi.number().min(1).max(5),
   ratingCount: Joi.number().min(0),
+  seller: Joi.string().hex().length(24), // Opcional, se asigna automáticamente
+  createdBy: Joi.string().valid("admin", "seller"),
 });
 
 const getSpecificProductValidation = Joi.object({
@@ -35,6 +37,8 @@ const updateProductValidation = Joi.object({
   brand: Joi.string().hex().length(24),
   ratingAvg: Joi.number().min(1).max(5),
   ratingCount: Joi.number().min(0),
+  seller: Joi.string().hex().length(24),
+  createdBy: Joi.string().valid("admin", "seller"),
 });
 
 const deleteProductValidation = Joi.object({

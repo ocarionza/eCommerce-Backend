@@ -1,6 +1,13 @@
 import { Schema, model } from "mongoose";
 
-const isHttpUrl = (v) => /^https?:\/\//i.test(v);
+function isHttpUrl(str) {
+  try {
+    const url = new URL(str);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
 
 function normalizeImage(value) {
   if (!value) return value;
@@ -18,6 +25,10 @@ const productSchema = new Schema(
       unique: true,
       trim: true,
       minLength: [3, "Too Short product Name"],
+    },
+    slug: {
+      type: String,
+      lowercase: true,
     },
     imgCover: {
       type: String,
@@ -48,6 +59,18 @@ const productSchema = new Schema(
     brand: { type: Schema.ObjectId, ref: "brand", required: true },
     ratingAvg: { type: Number, min: 1, max: 5 },
     ratingCount: { type: Number, min: 0 },
+    seller: {
+      type: Schema.ObjectId,
+      ref: "user",
+      required: function() {
+        return this.createdBy === 'seller';
+      }
+    },
+    createdBy: {
+      type: String,
+      enum: ["admin", "seller"],
+      default: "admin"
+    },
   },
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );

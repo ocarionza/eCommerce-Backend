@@ -70,4 +70,27 @@ const allowedTo = (...roles) => {
     next();
   });
 };
-export { signUp, signIn, protectedRoutes, allowedTo };
+
+const assignSellerRole = catchAsyncError(async (req, res, next) => {
+  const { userId } = req.params;
+  
+  // Solo admin puede asignar roles
+  if (req.user.role !== "admin") {
+    return next(new AppError("Only administrators can assign seller role", 403));
+  }
+
+  const user = await userModel.findByIdAndUpdate(
+    userId,
+    { role: "seller" },
+    { new: true }
+  ).select('-password');
+
+  if (!user) return next(new AppError("User not found", 404));
+
+  res.status(200).json({ 
+    message: "Seller role assigned successfully", 
+    user: { _id: user._id, name: user.name, email: user.email, role: user.role }
+  });
+});
+
+export { signUp, signIn, protectedRoutes, allowedTo, assignSellerRole};

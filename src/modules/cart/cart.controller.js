@@ -30,7 +30,7 @@ const addProductToCart = catchAsyncError(async (req, res, next) => {
     });
     calcTotalPrice(result);
     await result.save();
-    return res.status(201).json({ message: "success", result });
+    return res.status(201).json({ message: "success", cart: result });
   }
   console.log(isCartExist.cartItem);
 
@@ -50,7 +50,7 @@ const addProductToCart = catchAsyncError(async (req, res, next) => {
       (isCartExist.totalPrice * isCartExist.discount) / 100;
   }
   await isCartExist.save();
-  res.status(201).json({ message: "success", result: isCartExist });
+  res.status(201).json({ message: "success", cart: isCartExist });
 });
 
 const removeProductFromCart = catchAsyncError(async (req, res, next) => {

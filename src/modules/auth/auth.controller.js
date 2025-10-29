@@ -34,8 +34,23 @@ const signIn = catchAsyncError(async (req, res, next) => {
 });
 
 const protectedRoutes = catchAsyncError(async (req, res, next) => {
-  const { token } = req.headers;
-  if (!token) return next(new AppError("Token was not provided!", 401));
+  // Extraer token del header Authorization: Bearer <token> o del header token
+  let token = req.headers.token;
+  
+  if (!token && req.headers.authorization) {
+    // Si viene en formato "Bearer <token>"
+    const authHeader = req.headers.authorization;
+    console.log("🔍 Authorization header:", authHeader); // DEBUG
+    if (authHeader.startsWith('Bearer ')) {
+      token = authHeader.substring(7); // Quitar "Bearer "
+      console.log("✅ Token extraído:", token.substring(0, 20) + "..."); // DEBUG
+    }
+  }
+  
+  if (!token) {
+    console.log("❌ No se encontró token en headers"); // DEBUG
+    return next(new AppError("Token was not provided!", 401));
+  }
 
   let decoded = await jwt.verify(token, "JR");
 

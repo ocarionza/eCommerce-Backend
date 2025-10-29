@@ -24,7 +24,7 @@ export function bootstrap(app) {
   app.use("/api/v1/wishlist", wishListRouter);
   app.use("/api/v1/address", addressRouter);
   app.use("/api/v1/coupons", couponRouter);
-  app.use("/api/v1/carts", cartRouter);
+  app.use("/api/v1/cart", cartRouter);  // Cambiado de "carts" a "cart"
   app.use("/api/v1/orders", orderRouter);
 
   app.all("*", (req, res, next) => {

@@ -96,11 +96,25 @@ const getSellerOrders = catchAsyncError(async (req, res, next) => {
   // Usar agregación para encontrar órdenes que contengan productos del seller
   const orders = await orderModel.aggregate([
     {
+      $unwind: "$cartItems"
+    },
+    {
+      $addFields: {
+        "cartItems.productIdObj": { $toObjectId: "$cartItems.productId" }
+      }
+    },
+    {
       $lookup: {
         from: "products",
-        localField: "cartItems.productId",
+        localField: "cartItems.productIdObj",
         foreignField: "_id",
         as: "productDetails"
+      }
+    },
+    {
+      $unwind: {
+        path: "$productDetails",
+        preserveNullAndEmptyArrays: true
       }
     },
     {
@@ -117,45 +131,33 @@ const getSellerOrders = catchAsyncError(async (req, res, next) => {
       }
     },
     {
-      $addFields: {
-        // Filtrar solo los items del carrito que pertenecen al seller
+      $group: {
+        _id: "$_id",
+        userId: { $first: "$userId" },
+        buyer: { $first: { $arrayElemAt: ["$buyer", 0] } },
+        shippingAddress: { $first: "$shippingAddress" },
+        paymentMethod: { $first: "$paymentMethod" },
+        isPaid: { $first: "$isPaid" },
+        isDelivered: { $first: "$isDelivered" },
+        paidAt: { $first: "$paidAt" },
+        deliveredAt: { $first: "$deliveredAt" },
+        createdAt: { $first: "$createdAt" },
+        updatedAt: { $first: "$updatedAt" },
+        totalOrderPrice: { $first: "$totalOrderPrice" },
         sellerItems: {
-          $filter: {
-            input: "$cartItems",
-            cond: {
-              $in: [
-                "$$this.productId",
-                {
-                  $map: {
-                    input: {
-                      $filter: {
-                        input: "$productDetails",
-                        cond: { $eq: ["$$this.seller", sellerId] }
-                      }
-                    },
-                    in: "$$this._id"
-                  }
-                }
-              ]
-            }
+          $push: {
+            _id: "$cartItems._id",
+            productId: "$cartItems.productId",
+            quantity: "$cartItems.quantity",
+            price: "$cartItems.price",
+            totalProductDiscount: "$cartItems.totalProductDiscount",
+            productDetails: "$productDetails"
           }
         }
       }
     },
     {
-      $project: {
-        _id: 1,
-        buyer: { $arrayElemAt: ["$buyer", 0] },
-        sellerItems: 1,
-        shippingAddress: 1,
-        paymentMethod: 1,
-        isPaid: 1,
-        isDelivered: 1,
-        paidAt: 1,
-        deliveredAt: 1,
-        createdAt: 1,
-        updatedAt: 1,
-        // Calcular total solo de productos del seller
+      $addFields: {
         sellerTotal: {
           $sum: {
             $map: {
@@ -169,13 +171,6 @@ const getSellerOrders = catchAsyncError(async (req, res, next) => {
     { $sort: { createdAt: -1 } }
   ]);
 
-  // Poblar los detalles de los productos del seller
-  await orderModel.populate(orders, {
-    path: "sellerItems.productId",
-    select: "title price imgCover"
-  });
-
-  // Calcular estadísticas del seller
   const totalSellerSales = orders.reduce((acc, order) => acc + (order.sellerTotal || 0), 0);
   const sellerPaidOrders = orders.filter(order => order.isPaid).length;
   const sellerDeliveredOrders = orders.filter(order => order.isDelivered).length;

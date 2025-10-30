@@ -30,4 +30,8 @@ orderRouter.post('/checkOut/:id', protectedRoutes, allowedTo("user", "admin"), o
 
 // Ver todas las ventas (solo admin)
 orderRouter.get('/admin/sales', protectedRoutes, allowedTo("admin"), order.getAllOrders)
+
+// Ver órdenes con productos del seller
+orderRouter.get('/seller/orders', protectedRoutes, allowedTo("admin", "seller"), order.getSellerOrders)
+
 export default orderRouter;

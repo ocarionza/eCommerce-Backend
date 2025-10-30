@@ -89,6 +89,110 @@ const getAllOrders = catchAsyncError(async (req, res, next) => {
   });
 });
 
+// Obtener órdenes que contienen productos del seller autenticado
+const getSellerOrders = catchAsyncError(async (req, res, next) => {
+  const sellerId = req.user._id;
+
+  // Usar agregación para encontrar órdenes que contengan productos del seller
+  const orders = await orderModel.aggregate([
+    {
+      $lookup: {
+        from: "products",
+        localField: "cartItems.productId",
+        foreignField: "_id",
+        as: "productDetails"
+      }
+    },
+    {
+      $match: {
+        "productDetails.seller": sellerId
+      }
+    },
+    {
+      $lookup: {
+        from: "users",
+        localField: "userId",
+        foreignField: "_id",
+        as: "buyer"
+      }
+    },
+    {
+      $addFields: {
+        // Filtrar solo los items del carrito que pertenecen al seller
+        sellerItems: {
+          $filter: {
+            input: "$cartItems",
+            cond: {
+              $in: [
+                "$$this.productId",
+                {
+                  $map: {
+                    input: {
+                      $filter: {
+                        input: "$productDetails",
+                        cond: { $eq: ["$$this.seller", sellerId] }
+                      }
+                    },
+                    in: "$$this._id"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      $project: {
+        _id: 1,
+        buyer: { $arrayElemAt: ["$buyer", 0] },
+        sellerItems: 1,
+        shippingAddress: 1,
+        paymentMethod: 1,
+        isPaid: 1,
+        isDelivered: 1,
+        paidAt: 1,
+        deliveredAt: 1,
+        createdAt: 1,
+        updatedAt: 1,
+        // Calcular total solo de productos del seller
+        sellerTotal: {
+          $sum: {
+            $map: {
+              input: "$sellerItems",
+              in: { $multiply: ["$$this.price", "$$this.quantity"] }
+            }
+          }
+        }
+      }
+    },
+    { $sort: { createdAt: -1 } }
+  ]);
+
+  // Poblar los detalles de los productos del seller
+  await orderModel.populate(orders, {
+    path: "sellerItems.productId",
+    select: "title price imgCover"
+  });
+
+  // Calcular estadísticas del seller
+  const totalSellerSales = orders.reduce((acc, order) => acc + (order.sellerTotal || 0), 0);
+  const sellerPaidOrders = orders.filter(order => order.isPaid).length;
+  const sellerDeliveredOrders = orders.filter(order => order.isDelivered).length;
+
+  res.status(200).json({
+    message: "success",
+    results: orders.length,
+    statistics: {
+      totalOrders: orders.length,
+      totalSales: totalSellerSales,
+      paidOrders: sellerPaidOrders,
+      deliveredOrders: sellerDeliveredOrders
+    },
+    orders
+  });
+});
+
 const createCheckOutSession = catchAsyncError(async (req, res, next) => {
   let cart = await cartModel.findById(req.params.id);
   if(!cart) return next(new AppError("Cart was not found",404))
@@ -194,6 +298,7 @@ export {
   createCashOrder,
   getSpecificOrder,
   getAllOrders,
+  getSellerOrders,
   createCheckOutSession,
   createOnlineOrder,
 };

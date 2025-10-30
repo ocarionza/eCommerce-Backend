@@ -6,7 +6,7 @@ export class ApiFeatures {
 
   //1-Pagination
   pagination() {
-    const PAGE_LIMIT = 10;
+    const PAGE_LIMIT = 1000;
     let PAGE_NUMBER = this.queryString.page * 1 || 1;
     if (this.queryString.page <= 0) PAGE_NUMBER = 1;
     const PAGE_SKIP = (PAGE_NUMBER - 1) * PAGE_LIMIT; //2*3

@@ -96,17 +96,17 @@ const getSellerOrders = catchAsyncError(async (req, res, next) => {
   // Usar agregación para encontrar órdenes que contengan productos del seller
   const orders = await orderModel.aggregate([
     {
-      $unwind: "$cartItems"
+      $unwind: "$cartItem"
     },
     {
       $addFields: {
-        "cartItems.productIdObj": { $toObjectId: "$cartItems.productId" }
+        "cartItem.productIdObj": { $toObjectId: "$cartItem.productId" }
       }
     },
     {
       $lookup: {
         from: "products",
-        localField: "cartItems.productIdObj",
+        localField: "cartItem.productIdObj",
         foreignField: "_id",
         as: "productDetails"
       }
@@ -146,11 +146,11 @@ const getSellerOrders = catchAsyncError(async (req, res, next) => {
         totalOrderPrice: { $first: "$totalOrderPrice" },
         sellerItems: {
           $push: {
-            _id: "$cartItems._id",
-            productId: "$cartItems.productId",
-            quantity: "$cartItems.quantity",
-            price: "$cartItems.price",
-            totalProductDiscount: "$cartItems.totalProductDiscount",
+            _id: "$cartItem._id",
+            productId: "$cartItem.productId",
+            quantity: "$cartItem.quantity",
+            price: "$cartItem.price",
+            totalProductDiscount: "$cartItem.totalProductDiscount",
             productDetails: "$productDetails"
           }
         }

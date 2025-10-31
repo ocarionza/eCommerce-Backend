@@ -53,7 +53,7 @@ const createCashOrder = catchAsyncError(async (req, res, next) => {
 const getSpecificOrder = catchAsyncError(async (req, res, next) => {
   const orders = await orderModel
     .find({ userId: req.user._id })
-    .populate("cartItems.productId", "title price imgCover")
+    .populate("cartItem.productId", "title price imgCover")
     .sort({ createdAt: -1 });
 
   res.status(200).json({ 
@@ -68,7 +68,7 @@ const getAllOrders = catchAsyncError(async (req, res, next) => {
   const orders = await orderModel
     .find({})
     .populate("userId", "name email phone")
-    .populate("cartItems.productId", "title price imgCover")
+    .populate("cartItem.productId", "title price imgCover")
     .sort({ createdAt: -1 });
 
   // Calcular estadísticas
@@ -213,11 +213,14 @@ const createCheckOutSession = catchAsyncError(async (req, res, next) => {
       },
     ],
     mode: "payment",
-    success_url: process.env.STRIPE_SUCCESS_URL || "http://localhost:3000/payment-success",
+    success_url: (process.env.STRIPE_SUCCESS_URL || "http://localhost:3000/payment-success") + "?session_id={CHECKOUT_SESSION_ID}",
     cancel_url: process.env.STRIPE_CANCEL_URL || "http://localhost:3000/payment-cancelled",
     customer_email: req.user.email,
     client_reference_id: req.params.id,
-    metadata: req.body.shippingAddress,
+    metadata: {
+      // Stripe solo acepta strings en metadata, así que serializamos el objeto
+      shippingAddress: JSON.stringify(req.body.shippingAddress)
+    },
   });
 
   res.json({ message: "success", sessions });
@@ -252,26 +255,47 @@ const createOnlineOrder = catchAsyncError(async (request, response) => {
 //https://ecommerce-backend-codv.onrender.com/api/v1/orders/checkOut/6536c48750fab46f309bb950
 
 
-async function card (e,res){
-  let cart = await cartModel.findById(e.client_reference_id);
+async function card (e, res){
+  try {
+    console.log("🎉 Webhook recibido - Creando orden...");
+    
+    let cart = await cartModel.findById(e.client_reference_id);
 
-  if(!cart) return next(new AppError("Cart was not found",404))
+    if(!cart) {
+      console.error("❌ Carrito no encontrado:", e.client_reference_id);
+      return res.status(404).json({ error: "Cart was not found" });
+    }
 
-  let user = await userModel.findOne({email:e.customer_email})
-  const order = new orderModel({
-    userId: user._id,
-    cartItem: cart.cartItem,
-    totalOrderPrice : e.amount_total/100,
-    shippingAddress: e.metadata.shippingAddress,
-    paymentMethod:"card",
-    isPaid:true,
-    paidAt:Date.now()
-  });
+    let user = await userModel.findOne({email: e.customer_email});
+    
+    if(!user) {
+      console.error("❌ Usuario no encontrado:", e.customer_email);
+      return res.status(404).json({ error: "User was not found" });
+    }
 
-  await order.save();
+    // Deserializar la dirección de envío
+    let shippingAddress = {};
+    try {
+      shippingAddress = JSON.parse(e.metadata.shippingAddress);
+    } catch (err) {
+      console.error("Error al parsear shippingAddress:", err);
+      shippingAddress = e.metadata.shippingAddress || {};
+    }
 
-  // console.log(order);
-  if (order) {
+    const order = new orderModel({
+      userId: user._id,
+      cartItem: cart.cartItem,
+      totalOrderPrice: e.amount_total / 100,
+      shippingAddress: shippingAddress,
+      paymentMethod: "card",
+      isPaid: true,
+      paidAt: Date.now()
+    });
+
+    await order.save();
+    console.log("✅ Orden creada:", order._id);
+
+    // Actualizar inventario
     let options = cart.cartItem.map((item) => ({
       updateOne: {
         filter: { _id: item.productId },
@@ -280,14 +304,98 @@ async function card (e,res){
     }));
 
     await productModel.bulkWrite(options);
+    console.log("✅ Inventario actualizado");
 
+    // Eliminar carrito
     await cartModel.findOneAndDelete({userId: user._id});
+    console.log("✅ Carrito eliminado");
 
     return res.status(201).json({ message: "success", order });
-  } else {
-    next(new AppError("Error in cart ID", 404));
+  } catch (error) {
+    console.error("❌ Error en webhook:", error);
+    return res.status(500).json({ error: error.message });
   }
 }
+
+// Endpoint temporal para verificar pago manualmente (desarrollo)
+const verifyPaymentAndCreateOrder = catchAsyncError(async (req, res, next) => {
+  const { sessionId } = req.body;
+  
+  try {
+    // Obtener detalles de la sesión de Stripe
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    
+    if (session.payment_status !== 'paid') {
+      return next(new AppError("Payment not completed", 400));
+    }
+    
+    // Buscar carrito
+    let cart = await cartModel.findById(session.client_reference_id);
+    if (!cart) {
+      return next(new AppError("Cart was not found", 404));
+    }
+    
+    // Buscar usuario
+    let user = await userModel.findOne({ email: session.customer_email });
+    if (!user) {
+      return next(new AppError("User was not found", 404));
+    }
+    
+    // Verificar si la orden ya existe (evitar duplicados)
+    let existingOrder = await orderModel.findOne({ 
+      userId: user._id,
+      'cartItem.productId': { $in: cart.cartItem.map(item => item.productId) },
+      isPaid: true,
+      paymentMethod: "card"
+    });
+    
+    if (existingOrder) {
+      return res.status(200).json({ 
+        message: "Order already exists", 
+        order: existingOrder 
+      });
+    }
+    
+    // Deserializar dirección
+    let shippingAddress = {};
+    try {
+      shippingAddress = JSON.parse(session.metadata.shippingAddress);
+    } catch (err) {
+      shippingAddress = session.metadata.shippingAddress || {};
+    }
+    
+    // Crear orden
+    const order = new orderModel({
+      userId: user._id,
+      cartItem: cart.cartItem,
+      totalOrderPrice: session.amount_total / 100,
+      shippingAddress: shippingAddress,
+      paymentMethod: "card",
+      isPaid: true,
+      paidAt: Date.now()
+    });
+    
+    await order.save();
+    
+    // Actualizar inventario
+    let options = cart.cartItem.map((item) => ({
+      updateOne: {
+        filter: { _id: item.productId },
+        update: { $inc: { quantity: -item.quantity, sold: item.quantity } },
+      },
+    }));
+    
+    await productModel.bulkWrite(options);
+    
+    // Eliminar carrito
+    await cartModel.findOneAndDelete({ userId: user._id });
+    
+    res.status(201).json({ message: "success", order });
+  } catch (error) {
+    console.error("Error verificando pago:", error);
+    next(new AppError("Error verifying payment", 500));
+  }
+});
 
 export {
   createCashOrder,
@@ -296,4 +404,5 @@ export {
   getSellerOrders,
   createCheckOutSession,
   createOnlineOrder,
+  verifyPaymentAndCreateOrder,
 };

@@ -7,7 +7,7 @@ const orderSchema = new Schema({
         required:true,
         ref:'user'
     },
-    cartItems:[
+    cartItem:[
         {
             productId:{type:Schema.ObjectId, ref : "product"},
             quantity:{

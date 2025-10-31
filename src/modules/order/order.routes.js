@@ -34,4 +34,13 @@ orderRouter
     allowedTo("user", "admin"),  // Permitir user y admin
     order.createCashOrder
   )
+// Checkout con Stripe
+orderRouter.post('/checkOut/:id', protectedRoutes, allowedTo("user", "admin"), order.createCheckOutSession)
+
+// Ver todas las ventas (solo admin)
+orderRouter.get('/admin/sales', protectedRoutes, allowedTo("admin"), order.getAllOrders)
+
+// Ver órdenes con productos del seller
+orderRouter.get('/seller/orders', protectedRoutes, allowedTo("admin", "seller"), order.getSellerOrders)
+
 export default orderRouter;

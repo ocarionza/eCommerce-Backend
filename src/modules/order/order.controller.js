@@ -89,6 +89,105 @@ const getAllOrders = catchAsyncError(async (req, res, next) => {
   });
 });
 
+// Obtener órdenes que contienen productos del seller autenticado
+const getSellerOrders = catchAsyncError(async (req, res, next) => {
+  const sellerId = req.user._id;
+
+  // Usar agregación para encontrar órdenes que contengan productos del seller
+  const orders = await orderModel.aggregate([
+    {
+      $unwind: "$cartItems"
+    },
+    {
+      $addFields: {
+        "cartItems.productIdObj": { $toObjectId: "$cartItems.productId" }
+      }
+    },
+    {
+      $lookup: {
+        from: "products",
+        localField: "cartItems.productIdObj",
+        foreignField: "_id",
+        as: "productDetails"
+      }
+    },
+    {
+      $unwind: {
+        path: "$productDetails",
+        preserveNullAndEmptyArrays: true
+      }
+    },
+    {
+      $match: {
+        "productDetails.seller": sellerId
+      }
+    },
+    {
+      $lookup: {
+        from: "users",
+        localField: "userId",
+        foreignField: "_id",
+        as: "buyer"
+      }
+    },
+    {
+      $group: {
+        _id: "$_id",
+        userId: { $first: "$userId" },
+        buyer: { $first: { $arrayElemAt: ["$buyer", 0] } },
+        shippingAddress: { $first: "$shippingAddress" },
+        paymentMethod: { $first: "$paymentMethod" },
+        isPaid: { $first: "$isPaid" },
+        isDelivered: { $first: "$isDelivered" },
+        paidAt: { $first: "$paidAt" },
+        deliveredAt: { $first: "$deliveredAt" },
+        createdAt: { $first: "$createdAt" },
+        updatedAt: { $first: "$updatedAt" },
+        totalOrderPrice: { $first: "$totalOrderPrice" },
+        sellerItems: {
+          $push: {
+            _id: "$cartItems._id",
+            productId: "$cartItems.productId",
+            quantity: "$cartItems.quantity",
+            price: "$cartItems.price",
+            totalProductDiscount: "$cartItems.totalProductDiscount",
+            productDetails: "$productDetails"
+          }
+        }
+      }
+    },
+    {
+      $addFields: {
+        sellerTotal: {
+          $sum: {
+            $map: {
+              input: "$sellerItems",
+              in: { $multiply: ["$$this.price", "$$this.quantity"] }
+            }
+          }
+        }
+      }
+    },
+    { $sort: { createdAt: -1 } }
+  ]);
+
+  const totalSellerSales = orders.reduce((acc, order) => acc + (order.sellerTotal || 0), 0);
+  const sellerPaidOrders = orders.filter(order => order.isPaid).length;
+  const sellerDeliveredOrders = orders.filter(order => order.isDelivered).length;
+
+  res.status(200).json({
+    message: "success",
+    results: orders.length,
+    statistics: {
+      totalOrders: orders.length,
+      totalSales: totalSellerSales,
+      paidOrders: sellerPaidOrders,
+      deliveredOrders: sellerDeliveredOrders
+    },
+    orders
+  });
+});
+
 const createCheckOutSession = catchAsyncError(async (req, res, next) => {
   let cart = await cartModel.findById(req.params.id);
   if(!cart) return next(new AppError("Cart was not found",404))
@@ -302,6 +401,7 @@ export {
   createCashOrder,
   getSpecificOrder,
   getAllOrders,
+  getSellerOrders,
   createCheckOutSession,
   createOnlineOrder,
   verifyPaymentAndCreateOrder,

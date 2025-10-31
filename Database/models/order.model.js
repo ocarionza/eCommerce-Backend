@@ -18,6 +18,10 @@ const orderSchema = new Schema({
             totalProductDiscount:Number
           }
     ],
+    totalOrderPrice:{
+        type:Number,
+        required:true
+    },
     shippingAddress:{
         street:String,
         city:String,

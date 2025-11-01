@@ -213,8 +213,8 @@ const createCheckOutSession = catchAsyncError(async (req, res, next) => {
       },
     ],
     mode: "payment",
-    success_url: (process.env.STRIPE_SUCCESS_URL || "http://localhost:3000/payment-success") + "?session_id={CHECKOUT_SESSION_ID}",
-    cancel_url: process.env.STRIPE_CANCEL_URL || "http://localhost:3000/payment-cancelled",
+    success_url: (process.env.STRIPE_SUCCESS_URL || "https://alibabaclone.bradeijo.site/payment-success") + "?session_id={CHECKOUT_SESSION_ID}",
+    cancel_url: process.env.STRIPE_CANCEL_URL || "https://alibabaclone.bradeijo.site/payment-cancelled",
     customer_email: req.user.email,
     client_reference_id: req.params.id,
     metadata: {
